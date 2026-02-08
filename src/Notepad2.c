@@ -283,6 +283,7 @@ WCHAR     g_wchAppUserModelID[32] = L"";
 WCHAR     g_wchWorkingDirectory[MAX_PATH] = L"";
 
 // Forward declarations for DirTree
+static HTREEITEM DirTree_AddFolder(HWND hwndTV, HTREEITEM hParent, LPCWSTR szPath, LPCWSTR szDisplayName);
 static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent);
 static void DirTree_PopulateRoot(LPCWSTR szDir);
 static BOOL SplitterHitTest(HWND hwnd, int xPos, int yPos);
@@ -1804,6 +1805,11 @@ LRESULT MsgCreate(HWND hwnd,WPARAM wParam,LPARAM lParam)
   if (hwndEdit == NULL || hwndEditFrame == NULL ||
       hwndStatus == NULL || hwndToolbar == NULL || hwndReBar == NULL)
     return(-1);
+
+  // Populate directory tree on startup if visible
+  if (bShowDirTree) {
+    DirTree_PopulateRoot(g_wchWorkingDirectory);
+  }
 
   return(0);
 
@@ -7009,7 +7015,7 @@ static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent)
   HANDLE hFind;
   TVINSERTSTRUCT tvis;
   SHFILEINFO shfi;
-  HTREEITEM hInsertAfter;
+  int nParentLen;
 
   // Get parent path from lParam
   {
@@ -7034,12 +7040,15 @@ static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent)
     }
   }
 
-  wsprintf(szFind, L"%s\\*", szParentPath);
+  // Build search pattern, handling drive roots like "C:\" correctly
+  nParentLen = lstrlen(szParentPath);
+  if (nParentLen > 0 && szParentPath[nParentLen - 1] == L'\\')
+    wsprintf(szFind, L"%s*", szParentPath);
+  else
+    wsprintf(szFind, L"%s\\*", szParentPath);
 
   hFind = FindFirstFile(szFind, &fd);
   if (hFind == INVALID_HANDLE_VALUE) return;
-
-  hInsertAfter = TVI_LAST;
 
   // First pass: directories
   do {
@@ -7047,33 +7056,12 @@ static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent)
     if (lstrcmp(fd.cFileName, L".") == 0 || lstrcmp(fd.cFileName, L"..") == 0) continue;
     if (fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) continue;
 
-    wsprintf(szFullPath, L"%s\\%s", szParentPath, fd.cFileName);
+    if (nParentLen > 0 && szParentPath[nParentLen - 1] == L'\\')
+      wsprintf(szFullPath, L"%s%s", szParentPath, fd.cFileName);
+    else
+      wsprintf(szFullPath, L"%s\\%s", szParentPath, fd.cFileName);
 
-    SHGetFileInfo(szFullPath, 0, &shfi, sizeof(SHFILEINFO),
-      SHGFI_SMALLICON | SHGFI_SYSICONINDEX);
-
-    ZeroMemory(&tvis, sizeof(tvis));
-    tvis.hParent = hParent;
-    tvis.hInsertAfter = hInsertAfter;
-    tvis.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_CHILDREN | TVIF_PARAM;
-    tvis.item.pszText = fd.cFileName;
-    tvis.item.iImage = shfi.iIcon;
-    tvis.item.iSelectedImage = shfi.iIcon;
-    tvis.item.cChildren = 1;
-    tvis.item.lParam = (LPARAM)_wcsdup(szFullPath);
-
-    {
-      HTREEITEM hItem = TreeView_InsertItem(hwndTV, &tvis);
-      // Add dummy child so the [+] button shows
-      TVINSERTSTRUCT dummy;
-      ZeroMemory(&dummy, sizeof(dummy));
-      dummy.hParent = hItem;
-      dummy.hInsertAfter = TVI_FIRST;
-      dummy.item.mask = TVIF_TEXT | TVIF_PARAM;
-      dummy.item.pszText = L"";
-      dummy.item.lParam = 0;
-      TreeView_InsertItem(hwndTV, &dummy);
-    }
+    DirTree_AddFolder(hwndTV, hParent, szFullPath, fd.cFileName);
   } while (FindNextFile(hFind, &fd));
 
   // Second pass: files
@@ -7085,14 +7073,17 @@ static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent)
     if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
     if (fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) continue;
 
-    wsprintf(szFullPath, L"%s\\%s", szParentPath, fd.cFileName);
+    if (nParentLen > 0 && szParentPath[nParentLen - 1] == L'\\')
+      wsprintf(szFullPath, L"%s%s", szParentPath, fd.cFileName);
+    else
+      wsprintf(szFullPath, L"%s\\%s", szParentPath, fd.cFileName);
 
     SHGetFileInfo(szFullPath, 0, &shfi, sizeof(SHFILEINFO),
       SHGFI_SMALLICON | SHGFI_SYSICONINDEX);
 
     ZeroMemory(&tvis, sizeof(tvis));
     tvis.hParent = hParent;
-    tvis.hInsertAfter = hInsertAfter;
+    tvis.hInsertAfter = TVI_LAST;
     tvis.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_CHILDREN | TVIF_PARAM;
     tvis.item.pszText = fd.cFileName;
     tvis.item.iImage = shfi.iIcon;
@@ -7107,12 +7098,51 @@ static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent)
 }
 
 
-static void DirTree_PopulateRoot(LPCWSTR szDir)
+static HTREEITEM DirTree_AddFolder(HWND hwndTV, HTREEITEM hParent, LPCWSTR szPath, LPCWSTR szDisplayName)
 {
   SHFILEINFO shfi;
   TVINSERTSTRUCT tvis;
-  HTREEITEM hRoot;
   TVINSERTSTRUCT dummy;
+  HTREEITEM hItem;
+
+  SHGetFileInfo(szPath, 0, &shfi, sizeof(SHFILEINFO),
+    SHGFI_SMALLICON | SHGFI_SYSICONINDEX | SHGFI_DISPLAYNAME);
+
+  ZeroMemory(&tvis, sizeof(tvis));
+  tvis.hParent = hParent;
+  tvis.hInsertAfter = TVI_LAST;
+  tvis.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_CHILDREN | TVIF_PARAM;
+  tvis.item.pszText = (LPWSTR)(szDisplayName ? szDisplayName : shfi.szDisplayName);
+  tvis.item.iImage = shfi.iIcon;
+  tvis.item.iSelectedImage = shfi.iIcon;
+  tvis.item.cChildren = 1;
+  tvis.item.lParam = (LPARAM)_wcsdup(szPath);
+
+  hItem = TreeView_InsertItem(hwndTV, &tvis);
+
+  // Add dummy child so the [+] button shows
+  ZeroMemory(&dummy, sizeof(dummy));
+  dummy.hParent = hItem;
+  dummy.hInsertAfter = TVI_FIRST;
+  dummy.item.mask = TVIF_TEXT | TVIF_PARAM;
+  dummy.item.pszText = L"";
+  dummy.item.lParam = 0;
+  TreeView_InsertItem(hwndTV, &dummy);
+
+  return hItem;
+}
+
+
+static void DirTree_PopulateRoot(LPCWSTR szDir)
+{
+  WCHAR szDriveRoot[4];
+  WCHAR szPath[MAX_PATH];
+  WCHAR *components[64];
+  int nComponents = 0;
+  DWORD dwDrives;
+  int i;
+  HTREEITEM hCurrent;
+  HTREEITEM hTargetDrive = NULL;
 
   // Skip if same directory
   if (lstrcmpi(szTreeDir, szDir) == 0) return;
@@ -7120,31 +7150,89 @@ static void DirTree_PopulateRoot(LPCWSTR szDir)
   lstrcpy(szTreeDir, szDir);
   TreeView_DeleteAllItems(hwndDirTree);
 
-  SHGetFileInfo(szDir, 0, &shfi, sizeof(SHFILEINFO),
-    SHGFI_SMALLICON | SHGFI_SYSICONINDEX | SHGFI_DISPLAYNAME);
+  // Get the drive of the target directory
+  szDriveRoot[0] = szDir[0];
+  szDriveRoot[1] = L':';
+  szDriveRoot[2] = L'\\';
+  szDriveRoot[3] = L'\0';
 
-  ZeroMemory(&tvis, sizeof(tvis));
-  tvis.hParent = TVI_ROOT;
-  tvis.hInsertAfter = TVI_FIRST;
-  tvis.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_CHILDREN | TVIF_PARAM;
-  tvis.item.pszText = shfi.szDisplayName;
-  tvis.item.iImage = shfi.iIcon;
-  tvis.item.iSelectedImage = shfi.iIcon;
-  tvis.item.cChildren = 1;
-  tvis.item.lParam = (LPARAM)_wcsdup(szDir);
+  // Add all available drives as top-level items
+  dwDrives = GetLogicalDrives();
+  for (i = 0; i < 26; i++) {
+    if (dwDrives & (1 << i)) {
+      WCHAR szDrive[4];
+      HTREEITEM hDrive;
+      szDrive[0] = (WCHAR)(L'A' + i);
+      szDrive[1] = L':';
+      szDrive[2] = L'\\';
+      szDrive[3] = L'\0';
 
-  hRoot = TreeView_InsertItem(hwndDirTree, &tvis);
+      hDrive = DirTree_AddFolder(hwndDirTree, TVI_ROOT, szDrive, NULL);
 
-  // Add dummy child
-  ZeroMemory(&dummy, sizeof(dummy));
-  dummy.hParent = hRoot;
-  dummy.hInsertAfter = TVI_FIRST;
-  dummy.item.mask = TVIF_TEXT | TVIF_PARAM;
-  dummy.item.pszText = L"";
-  dummy.item.lParam = 0;
-  TreeView_InsertItem(hwndDirTree, &dummy);
+      // Remember the drive that contains our target
+      if (szDrive[0] == szDriveRoot[0] || szDrive[0] == (szDriveRoot[0] ^ 0x20))
+        hTargetDrive = hDrive;
+    }
+  }
 
-  TreeView_Expand(hwndDirTree, hRoot, TVE_EXPAND);
+  if (!hTargetDrive) return;
+
+  // Parse the path into components: C:\Users\dawid\code -> [Users, dawid, code]
+  lstrcpy(szPath, szDir);
+  {
+    WCHAR *p = szPath;
+    // Skip drive root (e.g. "C:\")
+    if (p[0] && p[1] == L':' && p[2] == L'\\')
+      p += 3;
+    while (*p) {
+      WCHAR *sep;
+      if (nComponents >= 64) break;
+      components[nComponents++] = p;
+      sep = wcschr(p, L'\\');
+      if (sep) {
+        *sep = L'\0';
+        p = sep + 1;
+      }
+      else break;
+    }
+  }
+
+  // Expand the drive node (this triggers DirTree_FillChildren via TVN_ITEMEXPANDING)
+  TreeView_Expand(hwndDirTree, hTargetDrive, TVE_EXPAND);
+  hCurrent = hTargetDrive;
+
+  // Walk down the path, expanding each component
+  for (i = 0; i < nComponents; i++) {
+    HTREEITEM hChild = TreeView_GetChild(hwndDirTree, hCurrent);
+    HTREEITEM hFound = NULL;
+
+    // Search among children for matching name
+    while (hChild) {
+      WCHAR szText[MAX_PATH];
+      TVITEM tvi;
+      ZeroMemory(&tvi, sizeof(tvi));
+      tvi.mask = TVIF_TEXT;
+      tvi.hItem = hChild;
+      tvi.pszText = szText;
+      tvi.cchTextMax = COUNTOF(szText);
+      TreeView_GetItem(hwndDirTree, &tvi);
+
+      if (lstrcmpi(szText, components[i]) == 0) {
+        hFound = hChild;
+        break;
+      }
+      hChild = TreeView_GetNextSibling(hwndDirTree, hChild);
+    }
+
+    if (!hFound) break;
+
+    TreeView_Expand(hwndDirTree, hFound, TVE_EXPAND);
+    hCurrent = hFound;
+  }
+
+  // Select and ensure visible the final node
+  TreeView_SelectItem(hwndDirTree, hCurrent);
+  TreeView_EnsureVisible(hwndDirTree, hCurrent);
 }
 
 
