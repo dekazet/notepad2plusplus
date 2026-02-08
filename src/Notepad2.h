@@ -65,6 +65,7 @@ typedef struct np2params {
 #define IDC_EDITFRAME    0xFB04
 #define IDC_FILENAME     0xFB05
 #define IDC_REUSELOCK    0xFB06
+#define IDC_DIRTREE      0xFB07
 
 
 //==== Statusbar ==============================================================

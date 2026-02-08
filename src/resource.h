@@ -352,6 +352,7 @@
 #define IDM_VIEW_MARKOCCURRENCES_CASE   40451
 #define IDM_VIEW_MARKOCCURRENCES_WORD   40452
 #define IDM_VIEW_AUTOCOMPLETEWORDS      40453
+#define IDM_VIEW_DIRTREE                40454
 #define IDM_HELP_ABOUT                  40500
 #define IDM_TRAY_RESTORE                40600
 #define IDM_TRAY_EXIT                   40601

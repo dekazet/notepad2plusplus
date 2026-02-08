@@ -54,6 +54,7 @@ HWND      hwndEditFrame;
 HWND      hwndMain;
 HWND      hwndNextCBChain = NULL;
 HWND      hDlgFindReplace = NULL;
+HWND      hwndDirTree;
 
 #define NUMTOOLBITMAPS  25
 #define NUMINITIALTOOLS 24
@@ -169,6 +170,8 @@ BOOL      bTransparentMode;
 BOOL      bTransparentModeAvailable;
 BOOL      bShowToolbar;
 BOOL      bShowStatusbar;
+BOOL      bShowDirTree;
+int       cxDirTree = 200;
 
 typedef struct _wi
 {
@@ -187,6 +190,10 @@ int     cyReBar;
 int     cyReBarFrame;
 int     cxEditFrame;
 int     cyEditFrame;
+
+#define SPLITTER_WIDTH  4
+BOOL    bSplitterDragging = FALSE;
+WCHAR   szTreeDir[MAX_PATH] = L"";
 
 int     cxEncodingDlg;
 int     cyEncodingDlg;
@@ -275,6 +282,10 @@ UINT16    g_uWinVer;
 WCHAR     g_wchAppUserModelID[32] = L"";
 WCHAR     g_wchWorkingDirectory[MAX_PATH] = L"";
 
+// Forward declarations for DirTree
+static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent);
+static void DirTree_PopulateRoot(LPCWSTR szDir);
+static BOOL SplitterHitTest(HWND hwnd, int xPos, int yPos);
 
 
 #ifdef BOOKMARK_EDITION
@@ -1157,6 +1168,55 @@ LRESULT CALLBACK MainWndProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
       break;
 
 
+    case WM_SETCURSOR:
+      {
+        POINT pt;
+        GetCursorPos(&pt);
+        ScreenToClient(hwnd, &pt);
+        if (SplitterHitTest(hwnd, pt.x, pt.y)) {
+          SetCursor(LoadCursor(NULL, IDC_SIZEWE));
+          return TRUE;
+        }
+      }
+      return DefWindowProc(hwnd,umsg,wParam,lParam);
+
+
+    case WM_LBUTTONDOWN:
+      {
+        int xPos = (int)(short)LOWORD(lParam);
+        int yPos = (int)(short)HIWORD(lParam);
+        if (SplitterHitTest(hwnd, xPos, yPos)) {
+          bSplitterDragging = TRUE;
+          SetCapture(hwnd);
+        }
+      }
+      break;
+
+
+    case WM_MOUSEMOVE:
+      if (bSplitterDragging) {
+        int xPos = (int)(short)LOWORD(lParam);
+        if (xPos < 30) xPos = 30;
+        {
+          RECT rc;
+          GetClientRect(hwnd, &rc);
+          if (xPos > rc.right - SPLITTER_WIDTH - 30)
+            xPos = rc.right - SPLITTER_WIDTH - 30;
+        }
+        cxDirTree = xPos;
+        SendWMSize(hwnd);
+      }
+      break;
+
+
+    case WM_LBUTTONUP:
+      if (bSplitterDragging) {
+        bSplitterDragging = FALSE;
+        ReleaseCapture();
+      }
+      break;
+
+
     case WM_SETFOCUS:
       SetFocus(hwndEdit);
 
@@ -1313,7 +1373,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
       int nID = GetDlgCtrlID((HWND)wParam);
 
       if ((nID != IDC_EDIT) && (nID != IDC_STATUSBAR) &&
-          (nID != IDC_REBAR) && (nID != IDC_TOOLBAR))
+          (nID != IDC_REBAR) && (nID != IDC_TOOLBAR) &&
+          (nID != IDC_DIRTREE))
         return DefWindowProc(hwnd,umsg,wParam,lParam);
 
       hmenu = LoadMenu(g_hInstance,MAKEINTRESOURCE(IDR_POPUPMENU));
@@ -1352,6 +1413,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
         case IDC_TOOLBAR:
         case IDC_STATUSBAR:
         case IDC_REBAR:
+        case IDC_DIRTREE:
           if (pt.x == -1 && pt.y == -1)
             GetCursorPos(&pt);
           imenu = 1;
@@ -1645,6 +1707,25 @@ LRESULT MsgCreate(HWND hwnd,WPARAM wParam,LPARAM lParam)
                     (HMENU)IDC_EDITFRAME,
                     hInstance,
                     NULL);
+
+  hwndDirTree = CreateWindowEx(
+                    WS_EX_CLIENTEDGE,
+                    WC_TREEVIEW, NULL,
+                    WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN |
+                    TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT |
+                    TVS_DISABLEDRAGDROP | TVS_SHOWSELALWAYS |
+                    (bShowDirTree ? WS_VISIBLE : 0),
+                    0, 0, 100, 100,
+                    hwnd, (HMENU)IDC_DIRTREE, hInstance, NULL);
+
+  // Set system image list for file/folder icons
+  {
+    SHFILEINFO shfi;
+    HIMAGELIST hil = (HIMAGELIST)SHGetFileInfo(
+        L"C:\\", 0, &shfi, sizeof(SHFILEINFO),
+        SHGFI_SMALLICON | SHGFI_SYSICONINDEX);
+    TreeView_SetImageList(hwndDirTree, hil, TVSIL_NORMAL);
+  }
 
   if (PrivateIsAppThemed()) {
 
@@ -2015,16 +2096,38 @@ void MsgSize(HWND hwnd,WPARAM wParam,LPARAM lParam)
     cy -= (rc.bottom - rc.top);
   }
 
-  hdwp = BeginDeferWindowPos(2);
+  if (bShowDirTree) {
+    int cxTree = cxDirTree;
+    int editorX = x + cxTree + SPLITTER_WIDTH;
+    int editorCx = cx - cxTree - SPLITTER_WIDTH;
+    if (editorCx < 10) editorCx = 10;
 
-  DeferWindowPos(hdwp,hwndEditFrame,NULL,x,y,cx,cy,
-                 SWP_NOZORDER | SWP_NOACTIVATE);
+    hdwp = BeginDeferWindowPos(3);
 
-  DeferWindowPos(hdwp,hwndEdit,NULL,x+cxEditFrame,y+cyEditFrame,
-                 cx-2*cxEditFrame,cy-2*cyEditFrame,
-                 SWP_NOZORDER | SWP_NOACTIVATE);
+    DeferWindowPos(hdwp,hwndDirTree,NULL,x,y,cxTree,cy,
+                   SWP_NOZORDER | SWP_NOACTIVATE);
 
-  EndDeferWindowPos(hdwp);
+    DeferWindowPos(hdwp,hwndEditFrame,NULL,editorX,y,editorCx,cy,
+                   SWP_NOZORDER | SWP_NOACTIVATE);
+
+    DeferWindowPos(hdwp,hwndEdit,NULL,editorX+cxEditFrame,y+cyEditFrame,
+                   editorCx-2*cxEditFrame,cy-2*cyEditFrame,
+                   SWP_NOZORDER | SWP_NOACTIVATE);
+
+    EndDeferWindowPos(hdwp);
+  }
+  else {
+    hdwp = BeginDeferWindowPos(2);
+
+    DeferWindowPos(hdwp,hwndEditFrame,NULL,x,y,cx,cy,
+                   SWP_NOZORDER | SWP_NOACTIVATE);
+
+    DeferWindowPos(hdwp,hwndEdit,NULL,x+cxEditFrame,y+cyEditFrame,
+                   cx-2*cxEditFrame,cy-2*cyEditFrame,
+                   SWP_NOZORDER | SWP_NOACTIVATE);
+
+    EndDeferWindowPos(hdwp);
+  }
 
   // Statusbar width
   aWidth[0] = max(120,min(cx/3,StatusCalcPaneWidth(hwndStatus,L"Ln 9'999'999 : 9'999'999   Col 9'999'999 : 999   Sel 9'999'999")));
@@ -2236,6 +2339,7 @@ void MsgInitMenu(HWND hwnd,WPARAM wParam,LPARAM lParam)
   CheckCmd(hmenu,IDM_VIEW_TOOLBAR,bShowToolbar);
   EnableCmd(hmenu,IDM_VIEW_CUSTOMIZETB,bShowToolbar);
   CheckCmd(hmenu,IDM_VIEW_STATUSBAR,bShowStatusbar);
+  CheckCmd(hmenu,IDM_VIEW_DIRTREE,bShowDirTree);
 
   i = (int)SendMessage(hwndEdit,SCI_GETLEXER,0,0);
   //EnableCmd(hmenu,IDM_VIEW_AUTOCLOSETAGS,(i == SCLEX_HTML || i == SCLEX_XML));
@@ -3661,9 +3765,9 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
         }
         else
         {
-            // define (behöver bara göra detta en gång egentligen)
-            //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 74 | (203 << 8) | (0 << 16) ); //behöver bara göra detta en gång egentligen
-            //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_ARROWS );    //behöver bara göra detta en gång egentligen
+            // define (behï¿½ver bara gï¿½ra detta en gï¿½ng egentligen)
+            //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 74 | (203 << 8) | (0 << 16) ); //behï¿½ver bara gï¿½ra detta en gï¿½ng egentligen
+            //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_ARROWS );    //behï¿½ver bara gï¿½ra detta en gï¿½ng egentligen
 
             if( bShowSelectionMargin )
             {
@@ -3677,8 +3781,8 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
             }
 
 
-            //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 180 | (255 << 8) | (180 << 16) ); //behöver bara göra detta en gång egentligen
-            //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_BACKGROUND );    //behöver bara göra detta en gång egentligen
+            //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 180 | (255 << 8) | (180 << 16) ); //behï¿½ver bara gï¿½ra detta en gï¿½ng egentligen
+            //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_BACKGROUND );    //behï¿½ver bara gï¿½ra detta en gï¿½ng egentligen
 
             // set
             SendMessage( hwndEdit , SCI_MARKERADD , iLine , 0 );
@@ -4136,6 +4240,28 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
         bShowStatusbar = 1;
         UpdateStatusbar();
         ShowWindow(hwndStatus,SW_SHOW);
+      }
+      SendWMSize(hwnd);
+      break;
+
+
+    case IDM_VIEW_DIRTREE:
+      if (bShowDirTree) {
+        bShowDirTree = 0;
+        ShowWindow(hwndDirTree,SW_HIDE);
+      }
+      else {
+        WCHAR szDir[MAX_PATH];
+        bShowDirTree = 1;
+        ShowWindow(hwndDirTree,SW_SHOW);
+        if (lstrlen(szCurFile)) {
+          lstrcpy(szDir, szCurFile);
+          PathRemoveFileSpec(szDir);
+        }
+        else {
+          lstrcpy(szDir, g_wchWorkingDirectory);
+        }
+        DirTree_PopulateRoot(szDir);
       }
       SendWMSize(hwnd);
       break;
@@ -5380,6 +5506,46 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
       break;
 
 
+    case IDC_DIRTREE:
+
+      switch(pnmh->code)
+      {
+        case TVN_ITEMEXPANDING:
+          {
+            LPNMTREEVIEW pnmtv = (LPNMTREEVIEW)lParam;
+            if (pnmtv->action == TVE_EXPAND) {
+              DirTree_FillChildren(hwndDirTree, pnmtv->itemNew.hItem);
+            }
+          }
+          break;
+
+        case TVN_DELETEITEM:
+          {
+            LPNMTREEVIEW pnmtv = (LPNMTREEVIEW)lParam;
+            if (pnmtv->itemOld.lParam)
+              free((void*)pnmtv->itemOld.lParam);
+          }
+          break;
+
+        case NM_DBLCLK:
+        case NM_RETURN:
+          {
+            HTREEITEM hSel = TreeView_GetSelection(hwndDirTree);
+            if (hSel) {
+              TVITEM tvi;
+              tvi.mask = TVIF_PARAM | TVIF_CHILDREN;
+              tvi.hItem = hSel;
+              TreeView_GetItem(hwndDirTree, &tvi);
+              if (tvi.cChildren == 0 && tvi.lParam) {
+                FileLoad(FALSE,FALSE,FALSE,FALSE,(LPCWSTR)tvi.lParam);
+              }
+            }
+          }
+          break;
+      }
+      break;
+
+
     case IDC_STATUSBAR:
 
       switch(pnmh->code)
@@ -5689,6 +5855,11 @@ void LoadSettings()
   bShowStatusbar = IniSectionGetInt(pIniSection,L"ShowStatusbar",1);
   if (bShowStatusbar) bShowStatusbar = 1;
 
+  bShowDirTree = IniSectionGetInt(pIniSection,L"ShowDirTree",0);
+  if (bShowDirTree) bShowDirTree = 1;
+  cxDirTree = IniSectionGetInt(pIniSection,L"DirTreeWidth",200);
+  cxDirTree = max(cxDirTree,30);
+
   cxEncodingDlg = IniSectionGetInt(pIniSection,L"EncodingDlgSizeX",256);
   cxEncodingDlg = max(cxEncodingDlg,0);
 
@@ -5884,6 +6055,8 @@ void SaveSettings(BOOL bSaveSettingsNow)
   IniSectionSetString(pIniSection,L"ToolbarButtons",tchToolbarButtons);
   IniSectionSetInt(pIniSection,L"ShowToolbar",bShowToolbar);
   IniSectionSetInt(pIniSection,L"ShowStatusbar",bShowStatusbar);
+  IniSectionSetInt(pIniSection,L"ShowDirTree",bShowDirTree);
+  IniSectionSetInt(pIniSection,L"DirTreeWidth",cxDirTree);
   IniSectionSetInt(pIniSection,L"EncodingDlgSizeX",cxEncodingDlg);
   IniSectionSetInt(pIniSection,L"EncodingDlgSizeY",cyEncodingDlg);
   IniSectionSetInt(pIniSection,L"RecodeDlgSizeX",cxRecodeDlg);
@@ -6824,6 +6997,188 @@ BOOL FileIO(BOOL fLoad,LPCWSTR psz,BOOL bNoEncDetect,int *ienc,int *ieol,
 
 //=============================================================================
 //
+//  DirTree helper functions
+//
+//
+static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent)
+{
+  WCHAR *szParentPath;
+  WCHAR szFind[MAX_PATH];
+  WCHAR szFullPath[MAX_PATH];
+  WIN32_FIND_DATA fd;
+  HANDLE hFind;
+  TVINSERTSTRUCT tvis;
+  SHFILEINFO shfi;
+  HTREEITEM hInsertAfter;
+
+  // Get parent path from lParam
+  {
+    TVITEM tvi;
+    tvi.mask = TVIF_PARAM;
+    tvi.hItem = hParent;
+    TreeView_GetItem(hwndTV, &tvi);
+    szParentPath = (WCHAR*)tvi.lParam;
+  }
+  if (!szParentPath) return;
+
+  // Check if already populated (first child is not a dummy)
+  {
+    HTREEITEM hChild = TreeView_GetChild(hwndTV, hParent);
+    if (hChild) {
+      TVITEM tvi;
+      tvi.mask = TVIF_PARAM;
+      tvi.hItem = hChild;
+      TreeView_GetItem(hwndTV, &tvi);
+      if (tvi.lParam != 0) return; // already populated
+      TreeView_DeleteItem(hwndTV, hChild); // remove dummy
+    }
+  }
+
+  wsprintf(szFind, L"%s\\*", szParentPath);
+
+  hFind = FindFirstFile(szFind, &fd);
+  if (hFind == INVALID_HANDLE_VALUE) return;
+
+  hInsertAfter = TVI_LAST;
+
+  // First pass: directories
+  do {
+    if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+    if (lstrcmp(fd.cFileName, L".") == 0 || lstrcmp(fd.cFileName, L"..") == 0) continue;
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) continue;
+
+    wsprintf(szFullPath, L"%s\\%s", szParentPath, fd.cFileName);
+
+    SHGetFileInfo(szFullPath, 0, &shfi, sizeof(SHFILEINFO),
+      SHGFI_SMALLICON | SHGFI_SYSICONINDEX);
+
+    ZeroMemory(&tvis, sizeof(tvis));
+    tvis.hParent = hParent;
+    tvis.hInsertAfter = hInsertAfter;
+    tvis.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_CHILDREN | TVIF_PARAM;
+    tvis.item.pszText = fd.cFileName;
+    tvis.item.iImage = shfi.iIcon;
+    tvis.item.iSelectedImage = shfi.iIcon;
+    tvis.item.cChildren = 1;
+    tvis.item.lParam = (LPARAM)_wcsdup(szFullPath);
+
+    {
+      HTREEITEM hItem = TreeView_InsertItem(hwndTV, &tvis);
+      // Add dummy child so the [+] button shows
+      TVINSERTSTRUCT dummy;
+      ZeroMemory(&dummy, sizeof(dummy));
+      dummy.hParent = hItem;
+      dummy.hInsertAfter = TVI_FIRST;
+      dummy.item.mask = TVIF_TEXT | TVIF_PARAM;
+      dummy.item.pszText = L"";
+      dummy.item.lParam = 0;
+      TreeView_InsertItem(hwndTV, &dummy);
+    }
+  } while (FindNextFile(hFind, &fd));
+
+  // Second pass: files
+  FindClose(hFind);
+  hFind = FindFirstFile(szFind, &fd);
+  if (hFind == INVALID_HANDLE_VALUE) return;
+
+  do {
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+    if (fd.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) continue;
+
+    wsprintf(szFullPath, L"%s\\%s", szParentPath, fd.cFileName);
+
+    SHGetFileInfo(szFullPath, 0, &shfi, sizeof(SHFILEINFO),
+      SHGFI_SMALLICON | SHGFI_SYSICONINDEX);
+
+    ZeroMemory(&tvis, sizeof(tvis));
+    tvis.hParent = hParent;
+    tvis.hInsertAfter = hInsertAfter;
+    tvis.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_CHILDREN | TVIF_PARAM;
+    tvis.item.pszText = fd.cFileName;
+    tvis.item.iImage = shfi.iIcon;
+    tvis.item.iSelectedImage = shfi.iIcon;
+    tvis.item.cChildren = 0;
+    tvis.item.lParam = (LPARAM)_wcsdup(szFullPath);
+
+    TreeView_InsertItem(hwndTV, &tvis);
+  } while (FindNextFile(hFind, &fd));
+
+  FindClose(hFind);
+}
+
+
+static void DirTree_PopulateRoot(LPCWSTR szDir)
+{
+  SHFILEINFO shfi;
+  TVINSERTSTRUCT tvis;
+  HTREEITEM hRoot;
+  TVINSERTSTRUCT dummy;
+
+  // Skip if same directory
+  if (lstrcmpi(szTreeDir, szDir) == 0) return;
+
+  lstrcpy(szTreeDir, szDir);
+  TreeView_DeleteAllItems(hwndDirTree);
+
+  SHGetFileInfo(szDir, 0, &shfi, sizeof(SHFILEINFO),
+    SHGFI_SMALLICON | SHGFI_SYSICONINDEX | SHGFI_DISPLAYNAME);
+
+  ZeroMemory(&tvis, sizeof(tvis));
+  tvis.hParent = TVI_ROOT;
+  tvis.hInsertAfter = TVI_FIRST;
+  tvis.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_CHILDREN | TVIF_PARAM;
+  tvis.item.pszText = shfi.szDisplayName;
+  tvis.item.iImage = shfi.iIcon;
+  tvis.item.iSelectedImage = shfi.iIcon;
+  tvis.item.cChildren = 1;
+  tvis.item.lParam = (LPARAM)_wcsdup(szDir);
+
+  hRoot = TreeView_InsertItem(hwndDirTree, &tvis);
+
+  // Add dummy child
+  ZeroMemory(&dummy, sizeof(dummy));
+  dummy.hParent = hRoot;
+  dummy.hInsertAfter = TVI_FIRST;
+  dummy.item.mask = TVIF_TEXT | TVIF_PARAM;
+  dummy.item.pszText = L"";
+  dummy.item.lParam = 0;
+  TreeView_InsertItem(hwndDirTree, &dummy);
+
+  TreeView_Expand(hwndDirTree, hRoot, TVE_EXPAND);
+}
+
+
+static BOOL SplitterHitTest(HWND hwnd, int xPos, int yPos)
+{
+  RECT rcClient;
+  int x, y, cy, splitterLeft;
+
+  if (!bShowDirTree) return FALSE;
+
+  GetClientRect(hwnd, &rcClient);
+  x = 0;
+  y = 0;
+  cy = rcClient.bottom;
+
+  if (bShowToolbar) {
+    y = cyReBar + cyReBarFrame;
+    cy -= cyReBar + cyReBarFrame;
+  }
+  if (bShowStatusbar) {
+    RECT rcStatus;
+    GetWindowRect(hwndStatus, &rcStatus);
+    cy -= (rcStatus.bottom - rcStatus.top);
+  }
+
+  splitterLeft = cxDirTree;
+
+  return (xPos >= splitterLeft && xPos < splitterLeft + SPLITTER_WIDTH &&
+          yPos >= y && yPos < y + cy);
+}
+
+
+//=============================================================================
+//
 //  FileLoad()
 //
 //
@@ -6959,6 +7314,18 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
     if (!bReload && bResetFileWatching)
       iFileWatchingMode = 0;
     InstallFileWatching(szCurFile);
+
+    if (bShowDirTree) {
+      WCHAR szDir[MAX_PATH];
+      if (lstrlen(szCurFile)) {
+        lstrcpy(szDir, szCurFile);
+        PathRemoveFileSpec(szDir);
+      }
+      else {
+        lstrcpy(szDir, g_wchWorkingDirectory);
+      }
+      DirTree_PopulateRoot(szDir);
+    }
 
     // the .LOG feature ...
     if (SendMessage(hwndEdit,SCI_GETLENGTH,0,0) >= 4) {
