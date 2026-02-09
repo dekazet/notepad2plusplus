@@ -70,9 +70,16 @@ __inline void EndWaitCursor()
 #define IsXP()    (g_uWinVer >= 0x0501)
 #define IsVista() (g_uWinVer >= 0x0600)
 #define IsW7()    (g_uWinVer >= 0x0601)
+#define IsW10()   (g_uWinVer >= 0x0A00)
 
 
 BOOL PrivateIsAppThemed();
+
+extern BOOL bDarkMode;
+void InitDarkMode();
+BOOL ShouldUseDarkMode();
+void ApplyDarkModeColors(HWND hwndMain);
+void RefreshTitleBarDarkMode(HWND hwnd);
 HRESULT PrivateSetCurrentProcessExplicitAppUserModelID(PCWSTR);
 BOOL IsElevated();
 //BOOL SetExplorerTheme(HWND);

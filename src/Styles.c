@@ -2893,9 +2893,9 @@ void Style_SetLexer(HWND hwnd,PEDITLEXER pLexNew)
   //Style_SetACPfromCharSet(hwnd);
 
   if (!Style_StrGetColor(TRUE,lexDefault.Styles[0+iIdx].szValue,&iValue))
-    SendMessage(hwnd,SCI_STYLESETFORE,STYLE_DEFAULT,(LPARAM)GetSysColor(COLOR_WINDOWTEXT));   // default text color
+    SendMessage(hwnd,SCI_STYLESETFORE,STYLE_DEFAULT,(LPARAM)(bDarkMode ? RGB(0xE0,0xE0,0xE0) : GetSysColor(COLOR_WINDOWTEXT)));   // default text color
   if (!Style_StrGetColor(FALSE,lexDefault.Styles[0+iIdx].szValue,&iValue))
-    SendMessage(hwnd,SCI_STYLESETBACK,STYLE_DEFAULT,(LPARAM)GetSysColor(COLOR_WINDOW));       // default window color
+    SendMessage(hwnd,SCI_STYLESETBACK,STYLE_DEFAULT,(LPARAM)(bDarkMode ? RGB(0x1E,0x1E,0x1E) : GetSysColor(COLOR_WINDOW)));       // default window color
 
   if (pLexNew->iLexer != SCLEX_NULL || pLexNew == &lexANSI)
     Style_SetStyles(hwnd,pLexNew->Styles[0].iStyle,pLexNew->Styles[0].szValue); // lexer default
@@ -3025,7 +3025,7 @@ void Style_SetLexer(HWND hwnd,PEDITLEXER pLexNew)
 
   // caret fore
   if (!Style_StrGetColor(TRUE,lexDefault.Styles[9+iIdx].szValue,&rgb))
-    rgb = GetSysColor(COLOR_WINDOWTEXT);
+    rgb = bDarkMode ? RGB(0xE0,0xE0,0xE0) : GetSysColor(COLOR_WINDOWTEXT);
   else {
     WCHAR wch[32];
     wsprintf(wch,L"fore:#%02X%02X%02X",

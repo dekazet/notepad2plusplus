@@ -139,6 +139,155 @@ BOOL PrivateIsAppThemed()
 
 //=============================================================================
 //
+//  Dark Mode support
+//
+BOOL bDarkMode = FALSE;
+
+// Undocumented uxtheme ordinals (standard practice: Notepad++, WinMerge, etc.)
+typedef int (WINAPI *fnSetPreferredAppMode)(int);     // ordinal 135
+typedef BOOL (WINAPI *fnAllowDarkModeForWindow)(HWND, BOOL); // ordinal 133
+typedef void (WINAPI *fnFlushMenuThemes)(void);        // ordinal 136
+
+static fnSetPreferredAppMode _SetPreferredAppMode = NULL;
+static fnAllowDarkModeForWindow _AllowDarkModeForWindow = NULL;
+static fnFlushMenuThemes _FlushMenuThemes = NULL;
+
+BOOL ShouldUseDarkMode()
+{
+  HKEY hKey;
+  DWORD dwValue = 1;
+  DWORD cbData = sizeof(DWORD);
+  if (RegOpenKeyEx(HKEY_CURRENT_USER,
+      L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+      0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+    RegQueryValueEx(hKey, L"AppsUseLightTheme", NULL, NULL, (LPBYTE)&dwValue, &cbData);
+    RegCloseKey(hKey);
+  }
+  return (dwValue == 0);
+}
+
+void InitDarkMode()
+{
+  if (!IsW10())
+    return;
+  if (hModUxTheme) {
+    _SetPreferredAppMode = (fnSetPreferredAppMode)GetProcAddress(hModUxTheme, MAKEINTRESOURCEA(135));
+    _AllowDarkModeForWindow = (fnAllowDarkModeForWindow)GetProcAddress(hModUxTheme, MAKEINTRESOURCEA(133));
+    _FlushMenuThemes = (fnFlushMenuThemes)GetProcAddress(hModUxTheme, MAKEINTRESOURCEA(136));
+  }
+  bDarkMode = ShouldUseDarkMode();
+  if (_SetPreferredAppMode)
+    _SetPreferredAppMode(1); // AllowDark
+}
+
+void RefreshTitleBarDarkMode(HWND hwnd)
+{
+  HMODULE hDwm = LoadLibrary(L"dwmapi.dll");
+  if (hDwm) {
+    typedef HRESULT (WINAPI *fnDwmSetWindowAttribute)(HWND, DWORD, LPCVOID, DWORD);
+    fnDwmSetWindowAttribute pDwmSetWindowAttribute =
+      (fnDwmSetWindowAttribute)GetProcAddress(hDwm, "DwmSetWindowAttribute");
+    if (pDwmSetWindowAttribute) {
+      BOOL value = bDarkMode;
+      // DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+      pDwmSetWindowAttribute(hwnd, 20, &value, sizeof(value));
+    }
+    FreeLibrary(hDwm);
+  }
+}
+
+// Dynamically call SetWindowTheme via uxtheme.dll
+static void DynSetWindowTheme(HWND hwnd, LPCWSTR pszSubAppName, LPCWSTR pszSubIdList)
+{
+  if (hModUxTheme) {
+    typedef HRESULT (WINAPI *fnSetWindowTheme)(HWND, LPCWSTR, LPCWSTR);
+    fnSetWindowTheme pSetWindowTheme =
+      (fnSetWindowTheme)GetProcAddress(hModUxTheme, "SetWindowTheme");
+    if (pSetWindowTheme)
+      pSetWindowTheme(hwnd, pszSubAppName, pszSubIdList);
+  }
+}
+
+void ApplyDarkModeColors(HWND hwndMain)
+{
+  extern HWND hwndDirTree;
+  extern HWND hwndEdit;
+  extern HWND hwndEditFrame;
+  extern HWND hwndStatus;
+  extern HWND hwndReBar;
+
+  // Title bar
+  RefreshTitleBarDarkMode(hwndMain);
+
+  // Tree view
+  if (hwndDirTree) {
+    if (bDarkMode) {
+      DynSetWindowTheme(hwndDirTree, L"DarkMode_Explorer", NULL);
+      TreeView_SetBkColor(hwndDirTree, RGB(0x2B,0x2B,0x2B));
+      TreeView_SetTextColor(hwndDirTree, RGB(0xE0,0xE0,0xE0));
+      TreeView_SetLineColor(hwndDirTree, RGB(0x60,0x60,0x60));
+    } else {
+      DynSetWindowTheme(hwndDirTree, L"Explorer", NULL);
+      TreeView_SetBkColor(hwndDirTree, (COLORREF)CLR_NONE);
+      TreeView_SetTextColor(hwndDirTree, (COLORREF)CLR_DEFAULT);
+      TreeView_SetLineColor(hwndDirTree, (COLORREF)CLR_DEFAULT);
+    }
+  }
+
+  // Editor + EditFrame - dark scrollbars
+  if (hwndEdit) {
+    if (bDarkMode)
+      DynSetWindowTheme(hwndEdit, L"DarkMode_Explorer", NULL);
+    else
+      DynSetWindowTheme(hwndEdit, NULL, NULL);
+  }
+  if (hwndEditFrame) {
+    if (bDarkMode)
+      DynSetWindowTheme(hwndEditFrame, L"DarkMode_Explorer", NULL);
+    else
+      DynSetWindowTheme(hwndEditFrame, NULL, NULL);
+  }
+
+  // Statusbar
+  if (hwndStatus) {
+    if (bDarkMode)
+      SendMessage(hwndStatus, SB_SETBKCOLOR, 0, (LPARAM)RGB(0x2B,0x2B,0x2B));
+    else
+      SendMessage(hwndStatus, SB_SETBKCOLOR, 0, (LPARAM)CLR_DEFAULT);
+    InvalidateRect(hwndStatus, NULL, TRUE);
+  }
+
+  // ReBar + Toolbar
+  if (hwndReBar) {
+    if (bDarkMode) {
+      DynSetWindowTheme(hwndReBar, L"DarkMode_Explorer", NULL);
+      SendMessage(hwndReBar, RB_SETBKCOLOR, 0, (LPARAM)RGB(0x2B,0x2B,0x2B));
+    } else {
+      DynSetWindowTheme(hwndReBar, NULL, NULL);
+      SendMessage(hwndReBar, RB_SETBKCOLOR, 0, (LPARAM)CLR_DEFAULT);
+    }
+    InvalidateRect(hwndReBar, NULL, TRUE);
+  }
+
+  {
+    extern HWND hwndToolbar;
+    if (hwndToolbar) {
+      InvalidateRect(hwndToolbar, NULL, TRUE);
+    }
+  }
+
+  // Menus
+  if (_AllowDarkModeForWindow) {
+    _AllowDarkModeForWindow(hwndMain, bDarkMode);
+  }
+  if (_FlushMenuThemes) {
+    _FlushMenuThemes();
+  }
+}
+
+
+//=============================================================================
+//
 //  PrivateSetCurrentProcessExplicitAppUserModelID()
 //
 HRESULT PrivateSetCurrentProcessExplicitAppUserModelID(PCWSTR AppID)

@@ -672,6 +672,7 @@ int WINAPI WinMain(HINSTANCE hInstance,HINSTANCE hPrevInst,LPSTR lpCmdLine,int n
   msgTaskbarCreated = RegisterWindowMessage(L"TaskbarCreated");
 
   hModUxTheme = LoadLibrary(L"uxtheme.dll");
+  InitDarkMode();
 
   Scintilla_RegisterClasses(hInstance);
 
@@ -1052,11 +1053,21 @@ LRESULT CALLBACK MainWndProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
     case WM_NCCALCSIZE:
     case WM_NCPAINT:
     case WM_PAINT:
-    case WM_ERASEBKGND:
     case WM_NCMOUSEMOVE:
     case WM_NCLBUTTONDOWN:
     case WM_WINDOWPOSCHANGING:
     case WM_WINDOWPOSCHANGED:
+      return DefWindowProc(hwnd,umsg,wParam,lParam);
+
+    case WM_ERASEBKGND:
+      if (bDarkMode) {
+        HBRUSH hbr = CreateSolidBrush(RGB(0x2B,0x2B,0x2B));
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        FillRect((HDC)wParam, &rc, hbr);
+        DeleteObject(hbr);
+        return 1;
+      }
       return DefWindowProc(hwnd,umsg,wParam,lParam);
 
     case WM_CREATE:
@@ -1214,6 +1225,23 @@ LRESULT CALLBACK MainWndProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
       if (bSplitterDragging) {
         bSplitterDragging = FALSE;
         ReleaseCapture();
+      }
+      break;
+
+
+    case WM_SETTINGCHANGE:
+      if (IsW10() && lParam && lstrcmp((LPCWSTR)lParam, L"ImmersiveColorSet") == 0) {
+        BOOL bNew = ShouldUseDarkMode();
+        if (bNew != bDarkMode) {
+          bDarkMode = bNew;
+          ApplyDarkModeColors(hwnd);
+          MsgThemeChanged(hwnd, 0, 0);
+          {
+            extern PEDITLEXER pLexCurrent;
+            Style_SetLexer(hwndEdit, pLexCurrent);
+          }
+          InvalidateRect(hwnd, NULL, TRUE);
+        }
       }
       break;
 
@@ -1811,6 +1839,9 @@ LRESULT MsgCreate(HWND hwnd,WPARAM wParam,LPARAM lParam)
     DirTree_PopulateRoot(g_wchWorkingDirectory);
   }
 
+  // Apply dark mode colors
+  ApplyDarkModeColors(hwnd);
+
   return(0);
 
 }
@@ -1870,8 +1901,11 @@ void CreateBars(HWND hwnd,HINSTANCE hInstance)
     hbmpCopy = CopyImage(hbmp,IMAGE_BITMAP,0,0,LR_CREATEDIBSECTION);
   }
   GetObject(hbmp,sizeof(BITMAP),&bmp);
-  if (!IsXP())
-    BitmapMergeAlpha(hbmp,GetSysColor(COLOR_3DFACE));
+  {
+    COLORREF crToolbarBg = bDarkMode ? RGB(0x2B,0x2B,0x2B) : GetSysColor(COLOR_3DFACE);
+    if (!IsXP())
+      BitmapMergeAlpha(hbmp,crToolbarBg);
+  }
   himl = ImageList_Create(bmp.bmWidth/NUMTOOLBITMAPS,bmp.bmHeight,ILC_COLOR32|ILC_MASK,0,0);
   ImageList_AddMasked(himl,hbmp,CLR_DEFAULT);
   DeleteObject(hbmp);
@@ -1912,12 +1946,13 @@ void CreateBars(HWND hwnd,HINSTANCE hInstance)
 
   if (!bExternalBitmap) {
     BOOL fProcessed = FALSE;
+    COLORREF crToolbarBg = bDarkMode ? RGB(0x2B,0x2B,0x2B) : GetSysColor(COLOR_3DFACE);
     if (flagToolbarLook == 1)
-      fProcessed = BitmapAlphaBlend(hbmpCopy,GetSysColor(COLOR_3DFACE),0x60);
+      fProcessed = BitmapAlphaBlend(hbmpCopy,crToolbarBg,0x60);
     else if (flagToolbarLook == 2 || (!IsXP() && flagToolbarLook == 0))
       fProcessed = BitmapGrayScale(hbmpCopy);
     if (fProcessed && !IsXP())
-      BitmapMergeAlpha(hbmpCopy,GetSysColor(COLOR_3DFACE));
+      BitmapMergeAlpha(hbmpCopy,crToolbarBg);
     if (fProcessed) {
       himl = ImageList_Create(bmp.bmWidth/NUMTOOLBITMAPS,bmp.bmHeight,ILC_COLOR32|ILC_MASK,0,0);
       ImageList_AddMasked(himl,hbmpCopy,CLR_DEFAULT);
@@ -2049,6 +2084,8 @@ void MsgThemeChanged(HWND hwnd,WPARAM wParam,LPARAM lParam)
   GetClientRect(hwnd,&rc);
   SendMessage(hwnd,WM_SIZE,SIZE_RESTORED,MAKELONG(rc.right,rc.bottom));
   UpdateStatusbar();
+
+  ApplyDarkModeColors(hwnd);
 }
 
 
@@ -5478,6 +5515,19 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
       switch(pnmh->code)
       {
 
+        case NM_CUSTOMDRAW:
+          if (bDarkMode) {
+            LPNMTBCUSTOMDRAW lpnmtb = (LPNMTBCUSTOMDRAW)lParam;
+            if (lpnmtb->nmcd.dwDrawStage == CDDS_PREPAINT)
+              return CDRF_NOTIFYITEMDRAW;
+            if (lpnmtb->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+              lpnmtb->clrBtnFace = RGB(0x2B,0x2B,0x2B);
+              lpnmtb->clrBtnHighlight = RGB(0x40,0x40,0x40);
+              return 0x00010000; /* TBCDRF_USECDCOLORS */
+            }
+          }
+          return CDRF_DODEFAULT;
+
         case TBN_ENDADJUST:
           UpdateToolbar();
           break;
@@ -5556,6 +5606,19 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
 
       switch(pnmh->code)
       {
+
+        case NM_CUSTOMDRAW:
+          if (bDarkMode) {
+            LPNMCUSTOMDRAW lpnmcd = (LPNMCUSTOMDRAW)lParam;
+            if (lpnmcd->dwDrawStage == CDDS_PREPAINT)
+              return CDRF_NOTIFYITEMDRAW;
+            if (lpnmcd->dwDrawStage == CDDS_ITEMPREPAINT) {
+              SetTextColor(lpnmcd->hdc, RGB(0xE0,0xE0,0xE0));
+              SetBkColor(lpnmcd->hdc, RGB(0x2B,0x2B,0x2B));
+              return CDRF_NEWFONT;
+            }
+          }
+          return CDRF_DODEFAULT;
 
         case NM_CLICK:
           {
