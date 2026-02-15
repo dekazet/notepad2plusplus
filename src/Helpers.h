@@ -241,4 +241,26 @@ VOID RestoreWndFromTray(HWND hWnd);
 
 
 
+//==== Performance Logging (Debug only) =======================================
+#ifdef PERF_DEBUG_ENABLED
+#define PERF_MAX_ENTRIES 32
+
+typedef struct {
+  WCHAR label[64];
+  LARGE_INTEGER qpcStart;
+  LARGE_INTEGER qpcStop;
+  BOOL completed;
+} PERFENTRY;
+
+extern PERFENTRY g_perfEntries[PERF_MAX_ENTRIES];
+extern int g_perfCount;
+extern LARGE_INTEGER g_perfFreq;
+
+void Perf_Init(void);
+int  Perf_Start(LPCWSTR label);
+void Perf_Stop(int index);
+double Perf_GetMs(int index);
+#endif
+
+
 ///   End of Helpers.h   \\\

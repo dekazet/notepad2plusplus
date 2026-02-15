@@ -2345,4 +2345,88 @@ INT_PTR InfoBox(int iType,LPCWSTR lpstrSetting,int uidMessage,...)
 
 
 
+//=============================================================================
+//
+//  PerfDlgProc() - Performance Log dialog (Debug only)
+//
+#ifdef PERF_DEBUG_ENABLED
+INT_PTR CALLBACK PerfDlgProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
+{
+  switch(umsg)
+  {
+    case WM_INITDIALOG:
+      {
+        HWND hwndList = GetDlgItem(hwnd,IDC_PERFLIST);
+        LVCOLUMN lvc;
+        LVITEM lvi;
+        WCHAR tch[128];
+        int i;
+
+        ListView_SetExtendedListViewStyle(hwndList,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
+
+        ZeroMemory(&lvc,sizeof(LVCOLUMN));
+        lvc.mask = LVCF_TEXT|LVCF_WIDTH|LVCF_SUBITEM;
+
+        lvc.iSubItem = 0;
+        lvc.pszText = L"#";
+        lvc.cx = 30;
+        ListView_InsertColumn(hwndList,0,&lvc);
+
+        lvc.iSubItem = 1;
+        lvc.pszText = L"Operation";
+        lvc.cx = 200;
+        ListView_InsertColumn(hwndList,1,&lvc);
+
+        lvc.iSubItem = 2;
+        lvc.pszText = L"Time (ms)";
+        lvc.cx = 100;
+        ListView_InsertColumn(hwndList,2,&lvc);
+
+        for (i = 0; i < g_perfCount; i++) {
+          ZeroMemory(&lvi,sizeof(LVITEM));
+          lvi.mask = LVIF_TEXT;
+          lvi.iItem = i;
+
+          lvi.iSubItem = 0;
+          wsprintf(tch,L"%d",i+1);
+          lvi.pszText = tch;
+          ListView_InsertItem(hwndList,&lvi);
+
+          lvi.iSubItem = 1;
+          lvi.pszText = g_perfEntries[i].label;
+          ListView_SetItem(hwndList,&lvi);
+
+          lvi.iSubItem = 2;
+          if (g_perfEntries[i].completed) {
+            double ms = Perf_GetMs(i);
+            int whole = (int)ms;
+            int frac = (int)((ms - whole) * 1000) % 1000;
+            if (frac < 0) frac = -frac;
+            wsprintf(tch,L"%d.%03d",whole,frac);
+          } else {
+            lstrcpy(tch,L"(running)");
+          }
+          lvi.pszText = tch;
+          ListView_SetItem(hwndList,&lvi);
+        }
+
+        CenterDlgInParent(hwnd);
+      }
+      return TRUE;
+
+    case WM_COMMAND:
+      switch(LOWORD(wParam))
+      {
+        case IDOK:
+        case IDCANCEL:
+          EndDialog(hwnd,IDOK);
+          break;
+      }
+      return TRUE;
+  }
+  return FALSE;
+}
+#endif
+
+
 //  End of Dialogs.c

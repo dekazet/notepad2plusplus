@@ -107,6 +107,8 @@
 #define IDD_INFOBOX                     126
 #define IDD_INFOBOX2                    127
 #define IDD_INFOBOX3                    128
+#define IDD_PERFLOG                     129
+#define IDC_PERFLIST                     130
 #define IDC_BACKSLASHHELP               151
 #define IDC_REGEXPHELP                  152
 #define IDC_WILDCARDHELP                153
@@ -354,6 +356,7 @@
 #define IDM_VIEW_AUTOCOMPLETEWORDS      40453
 #define IDM_VIEW_DIRTREE                40454
 #define IDM_HELP_ABOUT                  40500
+#define IDM_HELP_PERFLOG                40501
 #define IDM_TRAY_RESTORE                40600
 #define IDM_TRAY_EXIT                   40601
 #define IDT_FILE_NEW                    40700

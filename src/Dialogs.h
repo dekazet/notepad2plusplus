@@ -47,4 +47,9 @@ BOOL SelectDefLineEndingDlg(HWND,int *);
 INT_PTR InfoBox(int,LPCWSTR,int,...);
 
 
+#ifdef PERF_DEBUG_ENABLED
+INT_PTR CALLBACK PerfDlgProc(HWND,UINT,WPARAM,LPARAM);
+#endif
+
+
 // End of Dialogs.h

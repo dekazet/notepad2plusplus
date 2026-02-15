@@ -2535,4 +2535,47 @@ VOID RestoreWndFromTray(HWND hWnd)
 
 
 
+//=============================================================================
+//
+//  Performance Logging (Debug only)
+//
+#ifdef PERF_DEBUG_ENABLED
+PERFENTRY g_perfEntries[PERF_MAX_ENTRIES];
+int g_perfCount = 0;
+LARGE_INTEGER g_perfFreq;
+
+void Perf_Init(void) {
+  g_perfCount = 0;
+  ZeroMemory(g_perfEntries, sizeof(g_perfEntries));
+  QueryPerformanceFrequency(&g_perfFreq);
+}
+
+int Perf_Start(LPCWSTR label) {
+  int idx;
+  if (g_perfCount >= PERF_MAX_ENTRIES)
+    return -1;
+  idx = g_perfCount++;
+  lstrcpyn(g_perfEntries[idx].label, label, 64);
+  g_perfEntries[idx].completed = FALSE;
+  QueryPerformanceCounter(&g_perfEntries[idx].qpcStart);
+  return idx;
+}
+
+void Perf_Stop(int index) {
+  if (index < 0 || index >= g_perfCount)
+    return;
+  QueryPerformanceCounter(&g_perfEntries[index].qpcStop);
+  g_perfEntries[index].completed = TRUE;
+}
+
+double Perf_GetMs(int index) {
+  LONGLONG elapsed;
+  if (index < 0 || index >= g_perfCount || !g_perfEntries[index].completed)
+    return 0.0;
+  elapsed = g_perfEntries[index].qpcStop.QuadPart - g_perfEntries[index].qpcStart.QuadPart;
+  return (double)elapsed * 1000.0 / (double)g_perfFreq.QuadPart;
+}
+#endif
+
+
 ///   End of Helpers.c   \\\

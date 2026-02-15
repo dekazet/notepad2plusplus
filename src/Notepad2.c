@@ -589,6 +589,12 @@ int WINAPI WinMain(HINSTANCE hInstance,HINSTANCE hPrevInst,LPSTR lpCmdLine,int n
   //HMODULE hSciLexer;
   WCHAR wchWorkingDirectory[MAX_PATH];
 
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Init();
+  {
+  int iPerfBoot = Perf_Start(L"Boot total");
+#endif
+
   // Set global variable g_hInstance
   g_hInstance = hInstance;
 
@@ -687,6 +693,11 @@ int WINAPI WinMain(HINSTANCE hInstance,HINSTANCE hPrevInst,LPSTR lpCmdLine,int n
 
   hAccMain = LoadAccelerators(hInstance,MAKEINTRESOURCE(IDR_MAINWND));
   hAccFindReplace = LoadAccelerators(hInstance,MAKEINTRESOURCE(IDR_ACCFINDREPLACE));
+
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfBoot);
+  }
+#endif
 
   while (GetMessage(&msg,NULL,0,0))
   {
@@ -1637,8 +1648,13 @@ LRESULT CALLBACK MainWndProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
 //
 LRESULT MsgCreate(HWND hwnd,WPARAM wParam,LPARAM lParam)
 {
-
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfCreate;
+#endif
   HINSTANCE hInstance = ((LPCREATESTRUCT)lParam)->hInstance;
+#ifdef PERF_DEBUG_ENABLED
+  iPerfCreate = Perf_Start(L"MsgCreate");
+#endif
 
   // Setup edit control
   hwndEdit = EditCreate(hwnd);
@@ -1841,6 +1857,10 @@ LRESULT MsgCreate(HWND hwnd,WPARAM wParam,LPARAM lParam)
 
   // Apply dark mode colors
   ApplyDarkModeColors(hwnd);
+
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfCreate);
+#endif
 
   return(0);
 
@@ -4520,6 +4540,14 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
       break;
 
 
+#ifdef PERF_DEBUG_ENABLED
+    case IDM_HELP_PERFLOG:
+      ThemedDialogBox(g_hInstance,MAKEINTRESOURCE(IDD_PERFLOG),
+        hwnd,PerfDlgProc);
+      break;
+#endif
+
+
     case CMD_ESCAPE:
       //close the autocomplete box
       SendMessage(hwndEdit,SCI_AUTOCCANCEL,0, 0);
@@ -7037,6 +7065,9 @@ BOOL FileIO(BOOL fLoad,LPCWSTR psz,BOOL bNoEncDetect,int *ienc,int *ieol,
   WCHAR tch[MAX_PATH+40];
   BOOL fSuccess;
   DWORD dwFileAttributes;
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfIO = Perf_Start(fLoad ? L"FileIO (load)" : L"FileIO (save)");
+#endif
 
   BeginWaitCursor();
 
@@ -7059,6 +7090,10 @@ BOOL FileIO(BOOL fLoad,LPCWSTR psz,BOOL bNoEncDetect,int *ienc,int *ieol,
   StatusSetSimple(hwndStatus,FALSE);
 
   EndWaitCursor();
+
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfIO);
+#endif
 
   return(fSuccess);
 }
