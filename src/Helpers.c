@@ -168,8 +168,15 @@ BOOL ShouldUseDarkMode()
 
 void InitDarkMode()
 {
-  if (!IsW10())
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfDarkMode = Perf_Start(L"InitDarkMode");
+#endif
+  if (!IsW10()) {
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfDarkMode);
+#endif
     return;
+  }
   if (hModUxTheme) {
     _SetPreferredAppMode = (fnSetPreferredAppMode)GetProcAddress(hModUxTheme, MAKEINTRESOURCEA(135));
     _AllowDarkModeForWindow = (fnAllowDarkModeForWindow)GetProcAddress(hModUxTheme, MAKEINTRESOURCEA(133));
@@ -178,6 +185,9 @@ void InitDarkMode()
   bDarkMode = ShouldUseDarkMode();
   if (_SetPreferredAppMode)
     _SetPreferredAppMode(1); // AllowDark
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfDarkMode);
+#endif
 }
 
 void RefreshTitleBarDarkMode(HWND hwnd)

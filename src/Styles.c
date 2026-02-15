@@ -2825,6 +2825,9 @@ BOOL Style_Export(HWND hwnd)
 //
 void Style_SetLexer(HWND hwnd,PEDITLEXER pLexNew)
 {
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfSetLexer = Perf_Start(L"Style_SetLexer");
+#endif
   int i;
   //WCHAR *p;
   int rgb;
@@ -3215,6 +3218,9 @@ void Style_SetLexer(HWND hwnd,PEDITLEXER pLexNew)
 
   // Save current lexer
   pLexCurrent = pLexNew;
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfSetLexer);
+#endif
 }
 
 

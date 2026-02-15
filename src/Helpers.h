@@ -243,7 +243,7 @@ VOID RestoreWndFromTray(HWND hWnd);
 
 //==== Performance Logging (Debug only) =======================================
 #ifdef PERF_DEBUG_ENABLED
-#define PERF_MAX_ENTRIES 32
+#define PERF_MAX_ENTRIES 64
 
 typedef struct {
   WCHAR label[64];

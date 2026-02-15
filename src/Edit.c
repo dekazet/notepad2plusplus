@@ -1189,6 +1189,9 @@ BOOL EditLoadFile(
        BOOL *pbUnicodeErr,
        BOOL *pbFileTooBig)
 {
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfLoadFile = Perf_Start(L"EditLoadFile");
+#endif
 
   HANDLE hFile;
 
@@ -1222,6 +1225,9 @@ BOOL EditLoadFile(
   if (hFile == INVALID_HANDLE_VALUE) {
     iSrcEncoding = -1;
     iWeakSrcEncoding = -1;
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfLoadFile);
+#endif
     return FALSE;
   }
 
@@ -1237,6 +1243,9 @@ BOOL EditLoadFile(
       *pbFileTooBig = TRUE;
       iSrcEncoding = -1;
       iWeakSrcEncoding = -1;
+#ifdef PERF_DEBUG_ENABLED
+      Perf_Stop(iPerfLoadFile);
+#endif
       return FALSE;
     }
   }
@@ -1250,6 +1259,9 @@ BOOL EditLoadFile(
     GlobalFree(lpData);
     iSrcEncoding = -1;
     iWeakSrcEncoding = -1;
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfLoadFile);
+#endif
     return FALSE;
   }
 
@@ -1421,6 +1433,9 @@ BOOL EditLoadFile(
 
   iSrcEncoding = -1;
   iWeakSrcEncoding = -1;
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfLoadFile);
+#endif
   return TRUE;
 
 }
@@ -1766,7 +1781,7 @@ void EditTitleCase(HWND hwnd)
       bPrevWasSpace = TRUE;
       for (i = 0; i < cchTextW; i++)
       {
-          if (!IsCharAlphaNumericW(pszTextW[i]) && (!StrChr(L"'`´’",pszTextW[i]) ||  bPrevWasSpace ) )
+          if (!IsCharAlphaNumericW(pszTextW[i]) && (!StrChr(L"'`ï¿½ï¿½",pszTextW[i]) ||  bPrevWasSpace ) )
           {
               bNewWord = TRUE;
           }
@@ -4108,7 +4123,7 @@ void EditWrapToColumn(HWND hwnd,int nColumn/*,int nTabWidth*/)
   cchConvW = 0;
   iLineLength = 0;
 
-#define ISDELIMITER(wc) StrChr(L",;.:-+%&¦|/*?!\"\'~´#=",wc)
+#define ISDELIMITER(wc) StrChr(L",;.:-+%&ï¿½|/*?!\"\'~ï¿½#=",wc)
 #define ISWHITE(wc) StrChr(L" \t",wc)
 #define ISWORDEND(wc) (/*ISDELIMITER(wc) ||*/ StrChr(L" \t\r\n",wc))
 
@@ -5408,6 +5423,9 @@ HWND EditFindReplaceDlg(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL bReplace)
 //
 BOOL EditFindNext(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
 {
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfFindNext = Perf_Start(L"EditFindNext");
+#endif
 
   struct Sci_TextToFind ttf;
   int iPos;
@@ -5415,8 +5433,12 @@ BOOL EditFindNext(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
   char szFind2[512];
   BOOL bSuppressNotFound = FALSE;
 
-  if (!lstrlenA(lpefr->szFind))
+  if (!lstrlenA(lpefr->szFind)) {
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfFindNext);
+#endif
     return /*EditFindReplaceDlg(hwnd,lpefr,FALSE)*/FALSE;
+  }
 
   lstrcpynA(szFind2,lpefr->szFind,COUNTOF(szFind2));
   if (lpefr->bTransformBS)
@@ -5426,6 +5448,9 @@ BOOL EditFindNext(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
   if (lstrlenA(szFind2) == 0)
   {
     InfoBox(0,L"MsgNotFound",IDS_NOTFOUND);
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfFindNext);
+#endif
     return FALSE;
   }
 
@@ -5458,6 +5483,9 @@ BOOL EditFindNext(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
     // notfound
     if (!bSuppressNotFound)
       InfoBox(0,L"MsgNotFound",IDS_NOTFOUND);
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfFindNext);
+#endif
     return FALSE;
   }
 
@@ -5466,6 +5494,9 @@ BOOL EditFindNext(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
   else
     EditSelectEx(hwnd,min(iSelAnchor,iSelPos),ttf.chrgText.cpMax);
 
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfFindNext);
+#endif
   return TRUE;
 
 }
@@ -5477,6 +5508,9 @@ BOOL EditFindNext(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
 //
 BOOL EditFindPrev(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
 {
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfFindPrev = Perf_Start(L"EditFindPrev");
+#endif
 
   struct Sci_TextToFind ttf;
   int iPos;
@@ -5485,8 +5519,12 @@ BOOL EditFindPrev(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
   char szFind2[512];
   BOOL bSuppressNotFound = FALSE;
 
-  if (!lstrlenA(lpefr->szFind))
+  if (!lstrlenA(lpefr->szFind)) {
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfFindPrev);
+#endif
     return /*EditFindReplaceDlg(hwnd,lpefr,FALSE)*/FALSE;
+  }
 
   lstrcpynA(szFind2,lpefr->szFind,COUNTOF(szFind2));
   if (lpefr->bTransformBS)
@@ -5496,6 +5534,9 @@ BOOL EditFindPrev(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
   if (lstrlenA(szFind2) == 0)
   {
     InfoBox(0,L"MsgNotFound",IDS_NOTFOUND);
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfFindPrev);
+#endif
     return FALSE;
   }
 
@@ -5529,6 +5570,9 @@ BOOL EditFindPrev(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
     // notfound
     if (!bSuppressNotFound)
       InfoBox(0,L"MsgNotFound",IDS_NOTFOUND);
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfFindPrev);
+#endif
     return FALSE;
   }
 
@@ -5537,6 +5581,9 @@ BOOL EditFindPrev(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
   else
     EditSelectEx(hwnd,max(iSelPos,iSelAnchor),ttf.chrgText.cpMin);
 
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfFindPrev);
+#endif
   return TRUE;
 
 }
@@ -5548,6 +5595,9 @@ BOOL EditFindPrev(HWND hwnd,LPCEDITFINDREPLACE lpefr,BOOL fExtendSelection)
 //
 BOOL EditReplace(HWND hwnd,LPCEDITFINDREPLACE lpefr)
 {
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfReplace = Perf_Start(L"EditReplace");
+#endif
 
   struct Sci_TextToFind ttf;
   int iPos;
@@ -5558,8 +5608,12 @@ BOOL EditReplace(HWND hwnd,LPCEDITFINDREPLACE lpefr)
   char *pszReplace2;
   BOOL bSuppressNotFound = FALSE;
 
-  if (!lstrlenA(lpefr->szFind))
+  if (!lstrlenA(lpefr->szFind)) {
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfReplace);
+#endif
     return /*EditFindReplaceDlg(hwnd,lpefr,TRUE)*/FALSE;
+  }
 
   lstrcpynA(szFind2,lpefr->szFind,COUNTOF(szFind2));
   if (lpefr->bTransformBS)
@@ -5569,6 +5623,9 @@ BOOL EditReplace(HWND hwnd,LPCEDITFINDREPLACE lpefr)
   if (lstrlenA(szFind2) == 0)
   {
     InfoBox(0,L"MsgNotFound",IDS_NOTFOUND);
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfReplace);
+#endif
     return FALSE;
   }
 
@@ -5617,12 +5674,18 @@ BOOL EditReplace(HWND hwnd,LPCEDITFINDREPLACE lpefr)
     LocalFree(pszReplace2);
     if (!bSuppressNotFound)
       InfoBox(0,L"MsgNotFound",IDS_NOTFOUND);
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfReplace);
+#endif
     return FALSE;
   }
 
   if (iSelStart != ttf.chrgText.cpMin || iSelEnd != ttf.chrgText.cpMax) {
     LocalFree(pszReplace2);
     EditSelectEx(hwnd,ttf.chrgText.cpMin,ttf.chrgText.cpMax);
+#ifdef PERF_DEBUG_ENABLED
+    Perf_Stop(iPerfReplace);
+#endif
     return FALSE;
   }
 
@@ -5657,6 +5720,9 @@ BOOL EditReplace(HWND hwnd,LPCEDITFINDREPLACE lpefr)
   }
 
   LocalFree(pszReplace2);
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfReplace);
+#endif
   return TRUE;
 
 }

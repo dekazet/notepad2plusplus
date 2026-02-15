@@ -1874,6 +1874,9 @@ LRESULT MsgCreate(HWND hwnd,WPARAM wParam,LPARAM lParam)
 //
 void CreateBars(HWND hwnd,HINSTANCE hInstance)
 {
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfCreateBars = Perf_Start(L"CreateBars");
+#endif
   RECT rc;
 
   REBARINFO rbi;
@@ -2046,6 +2049,10 @@ void CreateBars(HWND hwnd,HINSTANCE hInstance)
   cyReBar = rc.bottom - rc.top;
 
   cyReBarFrame = bIsAppThemed ? 0 : 2;
+
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfCreateBars);
+#endif
 }
 
 
@@ -5746,6 +5753,9 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
 //
 void LoadSettings()
 {
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfLoadSettings = Perf_Start(L"LoadSettings");
+#endif
   WCHAR *pIniSection = LocalAlloc(LPTR,sizeof(WCHAR)*32*1024);
   int   cchIniSection = (int)LocalSize(pIniSection)/sizeof(WCHAR);
 
@@ -6059,6 +6069,9 @@ void LoadSettings()
   // Scintilla Styles
   Style_Load();
 
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfLoadSettings);
+#endif
 }
 
 
@@ -6069,6 +6082,9 @@ void LoadSettings()
 //
 void SaveSettings(BOOL bSaveSettingsNow)
 {
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfSaveSettings = Perf_Start(L"SaveSettings");
+#endif
   WCHAR *pIniSection = NULL;
   int   cchIniSection = 0;
 
@@ -6212,6 +6228,9 @@ void SaveSettings(BOOL bSaveSettingsNow)
   // Scintilla Styles
   Style_Save();
 
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfSaveSettings);
+#endif
 }
 
 
@@ -7233,6 +7252,9 @@ static HTREEITEM DirTree_AddFolder(HWND hwndTV, HTREEITEM hParent, LPCWSTR szPat
 
 static void DirTree_PopulateRoot(LPCWSTR szDir)
 {
+#ifdef PERF_DEBUG_ENABLED
+  int iPerfDirTree = Perf_Start(L"DirTree populate");
+#endif
   WCHAR szDriveRoot[4];
   WCHAR szPath[MAX_PATH];
   WCHAR *components[64];
@@ -7331,6 +7353,10 @@ static void DirTree_PopulateRoot(LPCWSTR szDir)
   // Select and ensure visible the final node
   TreeView_SelectItem(hwndDirTree, hCurrent);
   TreeView_EnsureVisible(hwndDirTree, hCurrent);
+
+#ifdef PERF_DEBUG_ENABLED
+  Perf_Stop(iPerfDirTree);
+#endif
 }
 
 
