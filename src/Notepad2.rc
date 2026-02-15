@@ -1503,7 +1503,7 @@ STRINGTABLE
 BEGIN
     IDS_APPTITLE            MY_APPNAME
     IDS_APPTITLE_ELEVATED   "%s (Administrator)"
-    IDS_APPTITLE_PASTEBOARD "Notepad2-mod : Paste Board"
+    IDS_APPTITLE_PASTEBOARD "Notepad2-plus-plus : Paste Board"
     IDS_UNTITLED            "Untitled"
     IDS_TITLEEXCERPT        """%s"""
     IDS_READONLY            "(Read Only)"

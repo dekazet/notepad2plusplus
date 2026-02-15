@@ -33,12 +33,12 @@
 #define VERSION_MINOR   2
 #define VERSION_BUILD   25
 
-#define MY_APPNAME                   L"Notepad2-mod"
+#define MY_APPNAME                   L"Notepad2-plus-plus"
 #define VERSION_FILEVERSION_NUM      VERSION_MAJOR,VERSION_MINOR,VERSION_BUILD,VERSION_REV
 #define VERSION_FILEVERSION          STRINGIFY(VERSION_MAJOR) "." STRINGIFY(VERSION_MINOR) "." \
                                      STRINGIFY(VERSION_BUILD) "." STRINGIFY(VERSION_REV)
-#define VERSION_LEGALCOPYRIGHT_SHORT L"Copyright © 2004-2017"
-#define VERSION_LEGALCOPYRIGHT_LONG  L"© Florian Balmer 2004-2017"
+#define VERSION_LEGALCOPYRIGHT_SHORT L"Copyright ï¿½ 2004-2017"
+#define VERSION_LEGALCOPYRIGHT_LONG  L"ï¿½ Florian Balmer 2004-2017"
 #define VERSION_AUTHORNAME           L"Florian Balmer"
 #define VERSION_WEBPAGEDISPLAY       L"flo's freeware - http://www.flos-freeware.ch"
 #define VERSION_EMAILDISPLAY         L"florian.balmer@gmail.com"
@@ -46,11 +46,11 @@
 #define VERSION_MODPAGEDISPLAY       L"https://xhmikosr.github.io/notepad2-mod/"
 
 #if defined(_WIN64)
-   #define VERSION_FILEVERSION_LONG  L"Notepad2-mod (64-bit) " STRINGIFY(VERSION_MAJOR) L"." \
+   #define VERSION_FILEVERSION_LONG  L"Notepad2-plus-plus (64-bit) " STRINGIFY(VERSION_MAJOR) L"." \
                                      STRINGIFY(VERSION_MINOR) L"." STRINGIFY(VERSION_BUILD)  \
                                      L" r" STRINGIFY(VERSION_REV) L" (" VERSION_HASH L")"
 #else
-   #define VERSION_FILEVERSION_LONG  L"Notepad2-mod " STRINGIFY(VERSION_MAJOR) L"."         \
+   #define VERSION_FILEVERSION_LONG  L"Notepad2-plus-plus " STRINGIFY(VERSION_MAJOR) L"."         \
                                      STRINGIFY(VERSION_MINOR) L"." STRINGIFY(VERSION_BUILD) \
                                      L" r" STRINGIFY(VERSION_REV) L" (" VERSION_HASH L")"
 #endif
