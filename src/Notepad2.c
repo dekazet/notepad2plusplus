@@ -55,6 +55,7 @@ HWND      hwndMain;
 HWND      hwndNextCBChain = NULL;
 HWND      hDlgFindReplace = NULL;
 HWND      hwndDirTree;
+HFONT     hFontDirTree;
 
 #define NUMTOOLBITMAPS  25
 #define NUMINITIALTOOLS 24
@@ -287,6 +288,7 @@ static HTREEITEM DirTree_AddFolder(HWND hwndTV, HTREEITEM hParent, LPCWSTR szPat
 static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent);
 static void DirTree_PopulateRoot(LPCWSTR szDir);
 static BOOL SplitterHitTest(HWND hwnd, int xPos, int yPos);
+static void UpdateDirTreeFont(void);
 
 
 #ifdef BOOKMARK_EDITION
@@ -1147,6 +1149,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
         // Remove tray icon if necessary
         ShowNotifyIcon(hwnd,FALSE);
 
+        if (hFontDirTree) {
+          DeleteObject(hFontDirTree);
+          hFontDirTree = NULL;
+        }
+
         bShutdownOK = TRUE;
       }
       if (umsg == WM_DESTROY)
@@ -1771,6 +1778,8 @@ LRESULT MsgCreate(HWND hwnd,WPARAM wParam,LPARAM lParam)
         SHGFI_SMALLICON | SHGFI_SYSICONINDEX);
     TreeView_SetImageList(hwndDirTree, hil, TVSIL_NORMAL);
   }
+
+  UpdateDirTreeFont();
 
   if (PrivateIsAppThemed()) {
 
@@ -5516,6 +5525,7 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
         case SCN_MODIFIED:
         case SCN_ZOOM:
           UpdateLineNumberWidth();
+          UpdateDirTreeFont();
           break;
 
         case SCN_SAVEPOINTREACHED:
@@ -7357,6 +7367,34 @@ static void DirTree_PopulateRoot(LPCWSTR szDir)
 #ifdef PERF_DEBUG_ENABLED
   Perf_Stop(iPerfDirTree);
 #endif
+}
+
+
+static void UpdateDirTreeFont(void)
+{
+  NONCLIENTMETRICS ncm;
+  int zoomLevel;
+  int baseSize;
+
+  if (!hwndDirTree)
+    return;
+
+  ncm.cbSize = sizeof(NONCLIENTMETRICS);
+  SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, 0);
+
+  zoomLevel = (int)SendMessage(hwndEdit, SCI_GETZOOM, 0, 0);
+  baseSize = ncm.lfMessageFont.lfHeight;
+  /* lfHeight is negative for character height; scale by zoom points */
+  if (baseSize < 0)
+    ncm.lfMessageFont.lfHeight = baseSize - zoomLevel;
+  else
+    ncm.lfMessageFont.lfHeight = baseSize + zoomLevel;
+
+  if (hFontDirTree)
+    DeleteObject(hFontDirTree);
+
+  hFontDirTree = CreateFontIndirect(&ncm.lfMessageFont);
+  SendMessage(hwndDirTree, WM_SETFONT, (WPARAM)hFontDirTree, TRUE);
 }
 
 
