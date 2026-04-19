@@ -108,6 +108,16 @@
 #define IDD_INFOBOX2                    127
 #define IDD_INFOBOX3                    128
 #define IDD_PERFLOG                     129
+#define IDD_FILE_ASSOCIATIONS           130
+
+// File-association dialog controls
+#define IDC_FA_INFO                     2000
+#define IDC_FA_TARGET                   2001
+#define IDC_FA_CHECKALL                 2002
+#define IDC_FA_UNCHECKALL               2003
+#define IDC_FA_OPENDEFAULTS             2004
+#define IDC_FA_EXT_FIRST                2100
+#define IDC_FA_EXT_LAST                 2199
 #define IDC_PERFLIST                     130
 #define IDC_BACKSLASHHELP               151
 #define IDC_REGEXPHELP                  152
@@ -206,6 +216,7 @@
 #define IDM_FILE_MANAGEFAV              40019
 #define IDM_FILE_RECENT                 40020
 #define IDM_FILE_EXIT                   40021
+#define IDM_FILE_ASSOCIATIONS           40022
 #define IDM_ENCODING_ANSI               40100
 #define IDM_ENCODING_UNICODE            40101
 #define IDM_ENCODING_UNICODEREV         40102

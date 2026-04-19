@@ -289,6 +289,7 @@ static void DirTree_FillChildren(HWND hwndTV, HTREEITEM hParent);
 static void DirTree_PopulateRoot(LPCWSTR szDir);
 static BOOL SplitterHitTest(HWND hwnd, int xPos, int yPos);
 static void UpdateDirTreeFont(void);
+static INT_PTR CALLBACK FileAssocDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 
 #ifdef BOOKMARK_EDITION
@@ -2892,6 +2893,12 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
             FileLoad(TRUE,FALSE,FALSE,FALSE,tchFile);
           }
         }
+      break;
+
+
+    case IDM_FILE_ASSOCIATIONS:
+      ThemedDialogBox(g_hInstance,MAKEINTRESOURCE(IDD_FILE_ASSOCIATIONS),
+        hwnd,FileAssocDlgProc);
       break;
 
 
@@ -7424,6 +7431,178 @@ static BOOL SplitterHitTest(HWND hwnd, int xPos, int yPos)
 
   return (xPos >= splitterLeft && xPos < splitterLeft + SPLITTER_WIDTH &&
           yPos >= y && yPos < y + cy);
+}
+
+
+//=============================================================================
+//
+//  File-association registration
+//
+//  Registers Notepad2-mod in HKCU\Software\Classes so it appears in the
+//  Windows "Open with" dialog for the selected extensions. Windows 10/11
+//  blocks apps from forcing the UserChoice default; the dialog therefore
+//  offers a button that opens the Default Apps settings page for the user
+//  to finish the pick.
+//
+
+#define FA_PROGID      L"Notepad2mod.TextFile"
+#define FA_PROGID_DESC L"Notepad2-mod Document"
+
+static const WCHAR* const g_szFileAssocExts[] = {
+  L".txt",  L".log",  L".ini",  L".cfg",  L".conf", L".md",   L".csv",
+  L".bat",  L".cmd",
+  L".c",    L".cpp",  L".h",    L".hpp",  L".cs",   L".java", L".py",
+  L".js",   L".ts",
+  L".json", L".xml",  L".html", L".htm",  L".css",  L".ps1",  L".sh",
+  L".yaml", L".yml"
+};
+#define FA_EXT_COUNT ((int)(sizeof(g_szFileAssocExts)/sizeof(g_szFileAssocExts[0])))
+
+
+static void FA_ResolveTarget(WCHAR* szPath, int cch)
+{
+  WCHAR szN2[MAX_PATH];
+  UINT  n = GetSystemDirectory(szN2, COUNTOF(szN2));
+  if (n > 0 && n < COUNTOF(szN2)) {
+    PathAppend(szN2, L"n2.exe");
+    if (PathFileExists(szN2)) {
+      lstrcpyn(szPath, szN2, cch);
+      return;
+    }
+  }
+  GetModuleFileName(NULL, szPath, cch);
+}
+
+
+static LONG FA_RegSetSz(HKEY hRoot, LPCWSTR pszSubKey, LPCWSTR pszValue, LPCWSTR pszData)
+{
+  HKEY hKey;
+  LONG lRes = RegCreateKeyEx(hRoot, pszSubKey, 0, NULL, REG_OPTION_NON_VOLATILE,
+                             KEY_WRITE, NULL, &hKey, NULL);
+  if (lRes == ERROR_SUCCESS) {
+    lRes = RegSetValueEx(hKey, pszValue, 0, REG_SZ, (const BYTE*)pszData,
+                         (lstrlen(pszData) + 1) * sizeof(WCHAR));
+    RegCloseKey(hKey);
+  }
+  return lRes;
+}
+
+
+static void FA_EnsureProgID(LPCWSTR pszExe)
+{
+  WCHAR szBuf[MAX_PATH + 32];
+
+  FA_RegSetSz(HKEY_CURRENT_USER, L"Software\\Classes\\" FA_PROGID,
+              NULL, FA_PROGID_DESC);
+  FA_RegSetSz(HKEY_CURRENT_USER, L"Software\\Classes\\" FA_PROGID,
+              L"FriendlyTypeName", FA_PROGID_DESC);
+
+  wsprintf(szBuf, L"%s,0", pszExe);
+  FA_RegSetSz(HKEY_CURRENT_USER,
+              L"Software\\Classes\\" FA_PROGID L"\\DefaultIcon",
+              NULL, szBuf);
+
+  wsprintf(szBuf, L"\"%s\" \"%%1\"", pszExe);
+  FA_RegSetSz(HKEY_CURRENT_USER,
+              L"Software\\Classes\\" FA_PROGID L"\\shell\\open\\command",
+              NULL, szBuf);
+}
+
+
+static BOOL FA_IsExtRegistered(LPCWSTR pszExt)
+{
+  HKEY  hKey;
+  WCHAR szKey[128];
+  BOOL  fResult = FALSE;
+  wsprintf(szKey, L"Software\\Classes\\%s\\OpenWithProgids", pszExt);
+  if (RegOpenKeyEx(HKEY_CURRENT_USER, szKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+    if (RegQueryValueEx(hKey, FA_PROGID, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
+      fResult = TRUE;
+    RegCloseKey(hKey);
+  }
+  return fResult;
+}
+
+
+static void FA_RegisterExt(LPCWSTR pszExt)
+{
+  WCHAR szKey[128];
+  wsprintf(szKey, L"Software\\Classes\\%s\\OpenWithProgids", pszExt);
+  FA_RegSetSz(HKEY_CURRENT_USER, szKey, FA_PROGID, L"");
+}
+
+
+static void FA_UnregisterExt(LPCWSTR pszExt)
+{
+  HKEY  hKey;
+  WCHAR szKey[128];
+  wsprintf(szKey, L"Software\\Classes\\%s\\OpenWithProgids", pszExt);
+  if (RegOpenKeyEx(HKEY_CURRENT_USER, szKey, 0, KEY_WRITE, &hKey) == ERROR_SUCCESS) {
+    RegDeleteValue(hKey, FA_PROGID);
+    RegCloseKey(hKey);
+  }
+}
+
+
+static INT_PTR CALLBACK FileAssocDlgProc(HWND hwndDlg, UINT uMsg,
+                                         WPARAM wParam, LPARAM lParam)
+{
+  static WCHAR s_szExe[MAX_PATH];
+  int i;
+
+  UNREFERENCED_PARAMETER(lParam);
+
+  switch (uMsg) {
+
+    case WM_INITDIALOG:
+      FA_ResolveTarget(s_szExe, COUNTOF(s_szExe));
+      SetDlgItemText(hwndDlg, IDC_FA_TARGET, s_szExe);
+      for (i = 0; i < FA_EXT_COUNT; i++) {
+        CheckDlgButton(hwndDlg, IDC_FA_EXT_FIRST + i,
+          FA_IsExtRegistered(g_szFileAssocExts[i]) ? BST_CHECKED : BST_UNCHECKED);
+      }
+      return TRUE;
+
+    case WM_COMMAND:
+      switch (LOWORD(wParam)) {
+
+        case IDOK:
+          FA_EnsureProgID(s_szExe);
+          for (i = 0; i < FA_EXT_COUNT; i++) {
+            BOOL fChecked =
+              (IsDlgButtonChecked(hwndDlg, IDC_FA_EXT_FIRST + i) == BST_CHECKED);
+            BOOL fPrev = FA_IsExtRegistered(g_szFileAssocExts[i]);
+            if (fChecked && !fPrev)
+              FA_RegisterExt(g_szFileAssocExts[i]);
+            else if (!fChecked && fPrev)
+              FA_UnregisterExt(g_szFileAssocExts[i]);
+          }
+          SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, NULL, NULL);
+          EndDialog(hwndDlg, IDOK);
+          return TRUE;
+
+        case IDCANCEL:
+          EndDialog(hwndDlg, IDCANCEL);
+          return TRUE;
+
+        case IDC_FA_CHECKALL:
+          for (i = 0; i < FA_EXT_COUNT; i++)
+            CheckDlgButton(hwndDlg, IDC_FA_EXT_FIRST + i, BST_CHECKED);
+          return TRUE;
+
+        case IDC_FA_UNCHECKALL:
+          for (i = 0; i < FA_EXT_COUNT; i++)
+            CheckDlgButton(hwndDlg, IDC_FA_EXT_FIRST + i, BST_UNCHECKED);
+          return TRUE;
+
+        case IDC_FA_OPENDEFAULTS:
+          ShellExecute(hwndDlg, NULL, L"ms-settings:defaultapps",
+                       NULL, NULL, SW_SHOWNORMAL);
+          return TRUE;
+      }
+      break;
+  }
+  return FALSE;
 }
 
 
